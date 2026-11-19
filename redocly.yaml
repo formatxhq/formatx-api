@@ -1,0 +1,6 @@
+# Lint rules for spec/swagger/*.yml (npm run spec:lint).
+extends:
+  - recommended
+rules:
+  info-license: off # proprietary for now
+  no-server-example.com: off # the only server listed is local development

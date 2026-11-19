@@ -1,13 +1,30 @@
-.vscode/
-converters/
-merged_pdfs/
-uploads/
-services/user-service/.env
-services/user-service/__pycache__
-services/file-service/.env
-services/file-service/__pycache__
-frontend/templates/profile.html
-frontend/static/js/profile.js
-api-gateway/.env
-api-gateway/__pycache__
-converted_docs/
+# dependencies and build output
+/node_modules
+/dist
+/coverage
+*.tsbuildinfo
+
+# TypeScript interfaces generated from spec/swagger/ (npm run generate, also on npm install)
+/spec/gen
+
+# local data: embedded database and uploaded files in development
+/.data
+
+# environment
+.env
+.env.*
+!.env.example
+
+# AI assistant files: kept on this machine, never pushed
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+.mcp.json
+
+# editors and OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+npm-debug.log*

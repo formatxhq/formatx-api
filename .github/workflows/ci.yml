@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint, build, test (PGlite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      # npm ci also generates spec/gen/ from the spec (postinstall)
+      - run: npm ci
+      - name: The OpenAPI spec is valid
+        run: npm run spec:lint
+      - run: npm run lint
+      - run: npx prettier --check "src/**/*.ts" "test/**/*.ts"
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm test
+      - run: npm run test:e2e
+      - name: Migrations are up to date with the schema
+        run: |
+          npx drizzle-kit generate
+          git diff --exit-code -- drizzle || (echo "::error::src/database/schema.ts changed without a migration. Run npm run db:generate." && exit 1)
+          test -z "$(git status --porcelain -- drizzle)" || (echo "::error::Uncommitted migration generated. Run npm run db:generate." && exit 1)
+
+  postgres:
+    name: End-to-end tests on real Postgres
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: formatx
+          POSTGRES_PASSWORD: formatx
+          POSTGRES_DB: formatx
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U formatx"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://formatx:formatx@localhost:5432/formatx
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Release-step migration script works
+        run: npm run build && npm run db:migrate
+      - run: npm run test:e2e
+
+  docker:
+    name: Docker image builds and starts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # The build context is the repo root; the Dockerfile and its ignore file live in docker/.
+      - run: docker build -f docker/Dockerfile -t formatx-api:ci .
+      - name: PDF tools are installed
+        run: docker run --rm formatx-api:ci sh -c "qpdf --version && gs --version"
+      - name: Container answers /health
+        run: |
+          docker run -d --name api -p 8080:8080 -e NODE_ENV=development -e STORAGE_DRIVER=memory formatx-api:ci
+          for i in $(seq 1 30); do curl -fsS localhost:8080/health && exit 0; sleep 2; done
+          docker logs api
+          exit 1
