@@ -214,6 +214,34 @@ paths:
         '404':
           description: Files are stored in R2, which serves these URLs itself.
 
+  /internal/cleanup:
+    post:
+      tags: [Internal]
+      operationId: runCleanup
+      summary: Delete every file whose time is up
+      description: Called every 5 minutes by a Cloudflare cron Worker. Returns 404 when no secret is configured.
+      security:
+        - InternalSecret: []
+      responses:
+        '200':
+          description: How many files were deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CleanupResult'
+        '401':
+          description: Missing or wrong secret.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          description: No internal secret is configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
   /health:
     get:
       tags: [Health]

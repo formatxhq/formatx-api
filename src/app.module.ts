@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ClientIpThrottlerGuard } from './common/guard/client-ip-throttler.guard.js';
+import { CleanupModule } from './modules/cleanup/cleanup.module.js';
 import { ConfigModule } from './modules/config/config.module.js';
 import { DatabaseModule } from './modules/database/database.module.js';
 import { FilesModule } from './modules/files/files.module.js';
@@ -22,6 +23,7 @@ import { StorageModule } from './modules/storage/storage.module.js';
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
     // features
     FilesModule,
+    CleanupModule,
     HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ClientIpThrottlerGuard }],
