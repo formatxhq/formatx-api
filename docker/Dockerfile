@@ -1,4 +1,8 @@
 # syntax=docker/dockerfile:1
+#
+# Build from the repo root (the context needs src/, spec/, drizzle/ …):
+#   docker build -f docker/Dockerfile -t formatx-api .
+# Docker reads docker/Dockerfile.dockerignore, next to this file, for what to leave out.
 
 # ---- build: compile TypeScript, then keep only production dependencies ----
 FROM node:22-bookworm-slim AS build

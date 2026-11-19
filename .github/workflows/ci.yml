@@ -72,7 +72,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - run: docker build -t formatx-api:ci .
+      # The build context is the repo root; the Dockerfile and its ignore file live in docker/.
+      - run: docker build -f docker/Dockerfile -t formatx-api:ci .
       - name: PDF tools are installed
         run: docker run --rm formatx-api:ci sh -c "qpdf --version && gs --version"
       - name: Container answers /health

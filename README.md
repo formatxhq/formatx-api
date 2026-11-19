@@ -58,6 +58,7 @@ src/
     config/                          every setting, validated at startup (schema/)
     health/                          GET /health
 drizzle/                             SQL migrations
+docker/                              Dockerfile and its ignore file
 test/                                end-to-end and contract tests
 ```
 
@@ -90,6 +91,12 @@ npm run db:generate  # after editing the database schema: writes a new migration
 ## Deploy
 
 CI runs every check above, the end-to-end tests against real Postgres 17, and builds and starts the Docker
-image (Node 22 + qpdf + Ghostscript, non-root). The image is meant for Cloudflare Containers behind a Worker
+image (Node 22 + qpdf + Ghostscript, non-root). Build it from the repo root:
+
+```bash
+docker build -f docker/Dockerfile -t formatx-api .
+```
+
+The image is meant for Cloudflare Containers behind a Worker
 that routes `/api`, rate-limits and calls cleanup every 5 minutes. Run `npm run db:migrate` as a release step,
 never at startup on Postgres.
