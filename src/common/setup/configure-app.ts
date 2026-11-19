@@ -1,6 +1,7 @@
 import { StandardSchemaValidationPipe } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import type { Env } from '../../modules/config/schema/env.schema.js';
+import { FILE_TOKEN_HEADER } from '../../modules/files/dto/files.dto.js';
 import { ApiExceptionFilter } from '../filter/api-exception.filter.js';
 import { setupSwaggerDocs } from './swagger.setup.js';
 
@@ -15,7 +16,7 @@ export function configureApp(app: NestExpressApplication, env: Env) {
   app.enableCors({
     origin: env.CORS_ORIGINS,
     methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type'],
+    allowedHeaders: ['Content-Type', FILE_TOKEN_HEADER],
     exposedHeaders: ['ETag'],
     maxAge: 600,
   });

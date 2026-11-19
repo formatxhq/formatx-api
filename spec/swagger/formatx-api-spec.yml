@@ -36,6 +36,184 @@ tags:
     description: Liveness and readiness for Cloudflare.
 
 paths:
+  /v1/files:
+    post:
+      tags: [Files]
+      operationId: createFile
+      security: []
+      summary: Reserve a file and get a one-time upload link
+      description: Rate-limited to 30 requests a minute per IP.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFileRequest'
+      responses:
+        '201':
+          description: File reserved. Upload the bytes to `upload.url` within 15 minutes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateFileResponse'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '413':
+          description: '`file_too_large`: the declared size is over the limit.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /v1/files/{id}/complete:
+    post:
+      tags: [Files]
+      operationId: completeFile
+      summary: Confirm an upload and check what arrived
+      description: Safe to call twice; a file that is already ready is returned as it is.
+      security:
+        - FileToken: []
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+      responses:
+        '200':
+          description: The file is ready to use.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileView'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '404':
+          $ref: '#/components/responses/FileNotFound'
+        '409':
+          description: '`upload_missing`: nothing has been uploaded to the link yet.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '422':
+          description: |
+            The upload was rejected and deleted. `size_mismatch`: not the declared size.
+            `content_mismatch`: its first bytes are not the declared type.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /v1/files/{id}:
+    get:
+      tags: [Files]
+      operationId: getFile
+      summary: Get a file's details, including when it will be deleted
+      security:
+        - FileToken: []
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+      responses:
+        '200':
+          description: The file.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FileView'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '404':
+          $ref: '#/components/responses/FileNotFound'
+    delete:
+      tags: [Files]
+      operationId: deleteFile
+      summary: Delete a file now
+      description: Removes it from storage immediately and records the deletion.
+      security:
+        - FileToken: []
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+      responses:
+        '204':
+          description: Deleted.
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '404':
+          $ref: '#/components/responses/FileNotFound'
+
+  /v1/files/{id}/download:
+    get:
+      tags: [Files]
+      operationId: getDownloadLink
+      summary: Get a 5-minute download link
+      security:
+        - FileToken: []
+      parameters:
+        - $ref: '#/components/parameters/FileId'
+      responses:
+        '200':
+          description: A link that downloads the file under its original name.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadLink'
+        '400':
+          $ref: '#/components/responses/ValidationFailed'
+        '404':
+          $ref: '#/components/responses/FileNotFound'
+        '409':
+          description: '`not_ready`: the upload hasn''t been confirmed yet.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /v1/storage:
+    put:
+      tags: [Storage (development)]
+      operationId: receiveSignedUpload
+      security: []
+      summary: Receive an upload to an app-signed URL
+      description: |
+        The signature, expiry, `Content-Type` and `Content-Length` in the URL must all match.
+        Send the headers from `upload.headers` exactly.
+      parameters:
+        - $ref: '#/components/parameters/SignedUrlQuery'
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              contentEncoding: binary
+      responses:
+        '200':
+          description: Stored.
+        '400':
+          description: The body is not the signed length.
+        '403':
+          description: The signature, expiry or headers don't match.
+        '404':
+          description: Files are stored in R2, which serves these URLs itself.
+    get:
+      tags: [Storage (development)]
+      operationId: serveSignedDownload
+      security: []
+      summary: Serve a download from an app-signed URL
+      parameters:
+        - $ref: '#/components/parameters/SignedUrlQuery'
+      responses:
+        '200':
+          description: The file, as an attachment under its original name.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                contentEncoding: binary
+        '403':
+          description: The signature or expiry doesn't match.
+        '404':
+          description: Files are stored in R2, which serves these URLs itself.
+
   /health:
     get:
       tags: [Health]

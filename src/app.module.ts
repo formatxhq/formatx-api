@@ -4,7 +4,9 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { ClientIpThrottlerGuard } from './common/guard/client-ip-throttler.guard.js';
 import { ConfigModule } from './modules/config/config.module.js';
 import { DatabaseModule } from './modules/database/database.module.js';
+import { FilesModule } from './modules/files/files.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { StorageModule } from './modules/storage/storage.module.js';
 
 /**
  * The whole API. Each feature lives in src/modules/<name>/ with its own controller, service, dto,
@@ -15,9 +17,11 @@ import { HealthModule } from './modules/health/health.module.js';
     // infrastructure
     ConfigModule,
     DatabaseModule,
+    StorageModule,
     // a per-IP ceiling for every route; busier routes set tighter limits with @Throttle()
     ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 120 }]),
     // features
+    FilesModule,
     HealthModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ClientIpThrottlerGuard }],
