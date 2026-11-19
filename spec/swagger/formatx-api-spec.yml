@@ -1,0 +1,264 @@
+openapi: 3.1.0
+info:
+  title: FormatX API
+  version: 0.1.0
+  description: |
+    Uploads, PDF jobs and automatic deletion for FormatX.
+
+    **How an anonymous file moves through the API**
+
+    1. `POST /v1/files` reserves a file and returns a one-time upload link plus a file token.
+    2. The browser sends the bytes to that link with `PUT`. They go straight to storage, not through the API.
+    3. `POST /v1/files/{id}/complete` checks what arrived: the exact size, and the first bytes must match
+       the declared type. A mismatch deletes the file.
+    4. `GET /v1/files/{id}/download` returns a short-lived download link.
+    5. The file is deleted when `expiresAt` passes, or right away with `DELETE /v1/files/{id}`.
+
+    Every call after the first sends the token in the `X-File-Token` header. A wrong token gets the same
+    `404` as a file that doesn't exist.
+
+    This file is the contract. `npm run generate` turns it into TypeScript interfaces in `spec/gen/` for the
+    API, and the web app generates its Angular interfaces from the same file.
+servers:
+  - description: Local
+    url: http://localhost:8080
+tags:
+  - name: Files
+    description: Anonymous file upload, verification, download and deletion.
+  - name: Storage (development)
+    description: |
+      Stand-ins for R2's signed URLs when files are stored locally. Clients never build these URLs;
+      they use the `upload.url` and download `url` the Files endpoints return. In production (R2) these
+      routes return `404`.
+  - name: Internal
+    description: Called by Cloudflare, not by browsers.
+  - name: Health
+    description: Liveness and readiness for Cloudflare.
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      operationId: getHealth
+      security: []
+      summary: Check that the API can reach its database
+      responses:
+        '200':
+          description: Healthy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          description: The database is unreachable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+components:
+  securitySchemes:
+    FileToken:
+      type: apiKey
+      in: header
+      name: X-File-Token
+      description: The `token` returned when the file was created. Only its hash is stored.
+    InternalSecret:
+      type: http
+      scheme: bearer
+      description: The `INTERNAL_SECRET` setting.
+
+  parameters:
+    FileId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    SignedUrlQuery:
+      name: signature
+      in: query
+      required: true
+      description: Part of the signed URL. Use the URL exactly as returned.
+      schema:
+        type: string
+
+  responses:
+    ValidationFailed:
+      description: '`validation_failed`: the request body or a parameter is invalid; `details` says which.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    FileNotFound:
+      description: '`file_not_found`: no such file, it was deleted, or the token is wrong.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+    TooManyRequests:
+      description: '`too_many_requests`: slow down.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+
+  schemas:
+    AcceptedContentType:
+      type: string
+      description: The file types the tools accept.
+      enum: [application/pdf, image/png, image/jpeg, image/webp, image/heic]
+
+    FileStatus:
+      type: string
+      description: '`pending` until the upload is confirmed, then `ready`.'
+      enum: [pending, ready]
+
+    CreateFileRequest:
+      type: object
+      additionalProperties: false
+      required: [name, contentType, size]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: The file's name. Folders and unsafe characters are removed before it is stored.
+          examples: [Resume_2026.pdf]
+        contentType:
+          $ref: '#/components/schemas/AcceptedContentType'
+        size:
+          type: integer
+          minimum: 1
+          description: The exact size in bytes. The upload must match it.
+
+    FileView:
+      type: object
+      additionalProperties: false
+      required: [id, name, contentType, size, status, createdAt, expiresAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        contentType:
+          $ref: '#/components/schemas/AcceptedContentType'
+        size:
+          type: integer
+          minimum: 1
+          description: Bytes.
+        status:
+          $ref: '#/components/schemas/FileStatus'
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: [string, 'null']
+          format: date-time
+          description: When the file will be deleted. The web app counts down to this. `null` for files that are kept.
+
+    SignedUpload:
+      type: object
+      additionalProperties: false
+      required: [url, method, headers, expiresAt]
+      properties:
+        url:
+          type: string
+          format: uri
+        method:
+          type: string
+          enum: [PUT]
+        headers:
+          type: object
+          description: Send these headers exactly as they are.
+          additionalProperties:
+            type: string
+        expiresAt:
+          type: string
+          format: date-time
+
+    CreateFileResponse:
+      type: object
+      additionalProperties: false
+      required: [file, token, upload]
+      properties:
+        file:
+          $ref: '#/components/schemas/FileView'
+        token:
+          type: string
+          description: Keep it; every later call for this file needs it in `X-File-Token`. It is shown only once.
+        upload:
+          $ref: '#/components/schemas/SignedUpload'
+
+    DownloadLink:
+      type: object
+      additionalProperties: false
+      required: [url, expiresAt]
+      properties:
+        url:
+          type: string
+          format: uri
+        expiresAt:
+          type: string
+          format: date-time
+
+    CleanupResult:
+      type: object
+      additionalProperties: false
+      required: [deleted]
+      properties:
+        deleted:
+          type: integer
+          minimum: 0
+
+    HealthStatus:
+      type: object
+      additionalProperties: false
+      required: [status, database]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        database:
+          type: string
+          enum: [up]
+
+    ApiErrorCode:
+      type: string
+      description: A stable, machine-readable reason. The web app chooses its message from this.
+      enum:
+        - validation_failed
+        - file_not_found
+        - file_too_large
+        - upload_missing
+        - size_mismatch
+        - content_mismatch
+        - not_ready
+        - unauthorized
+        - forbidden
+        - not_found
+        - too_many_requests
+        - service_unavailable
+        - internal_error
+
+    ApiError:
+      type: object
+      additionalProperties: false
+      required: [statusCode, code, message]
+      properties:
+        statusCode:
+          type: integer
+        code:
+          $ref: '#/components/schemas/ApiErrorCode'
+        message:
+          type: string
+          description: A sentence a person can read.
+        details:
+          type: array
+          description: For `validation_failed`, one entry per invalid field.
+          items:
+            type: string
